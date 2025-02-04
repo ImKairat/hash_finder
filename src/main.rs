@@ -1,8 +1,8 @@
+use sha2::{Sha256, Digest};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use sha2::{Sha256, Digest};
-use clap::Parser;
 use std::sync::atomic::{AtomicBool, Ordering};
+use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[command(name = "hash_finder")]
@@ -15,12 +15,7 @@ struct Args {
     results: usize,
 }
 
-fn main() {
-    let args = Args::parse();
-
-    let zeros = args.zeros;
-    let results_to_find = args.results;
-
+pub fn find_hashes(zeros: usize, results_to_find: usize) -> Vec<(u64, String)> {
     let found_hashes = Arc::new(Mutex::new(Vec::new()));
     let counter = Arc::new(Mutex::new(1u64));
     let stop_flag = Arc::new(AtomicBool::new(false));
@@ -51,7 +46,6 @@ fn main() {
 
                 if hash_hex.ends_with(&"0".repeat(zeros)) {
                     let mut found_hashes = found_hashes.lock().unwrap();
-                    println!("{}, \"{}\"", num, hash_hex);
                     found_hashes.push((num, hash_hex));
 
                     if found_hashes.len() >= results_to_find {
@@ -67,5 +61,46 @@ fn main() {
 
     for handle in handles {
         handle.join().unwrap();
+    }
+
+    Arc::try_unwrap(found_hashes).unwrap().into_inner().unwrap()
+}
+
+fn main() {
+    let args = Args::parse();
+    let zeros = args.zeros;
+    let results_to_find = args.results;
+
+    let found_hashes = find_hashes(zeros, results_to_find);
+
+    for (num, hash) in found_hashes {
+        println!("{}, \"{}\"", num, hash);
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hash_ends_with_zeros() {
+        let zeros = 3;
+        let results_to_find = 2;
+        let found_hashes = find_hashes(zeros, results_to_find);
+
+        for (_, hash) in found_hashes {
+            let trailing_zeros = hash.chars().rev().take_while(|&c| c == '0').count();
+            assert_eq!(trailing_zeros, zeros);
+        }
+    }
+
+    #[test]
+    fn test_results_count() {
+        let zeros = 3;
+        let results_to_find = 5;
+        let found_hashes = find_hashes(zeros, results_to_find);
+
+        assert_eq!(found_hashes.len(), results_to_find);
     }
 }
